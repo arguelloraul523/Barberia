@@ -11,6 +11,8 @@
       </div>
 
       <div class="header-actions">
+        <button @click="abrirModalCatalogo" class="btn-secondary-header">🧾 Catálogo</button>
+        <button @click="abrirModalCaja" class="btn-secondary-header">💰 Cerrar caja</button>
         <button @click="abrirNuevoModal" class="btn-primary-glow">
           <span class="btn-icon">✂️</span> Registrar Nuevo Servicio
         </button>
@@ -102,6 +104,26 @@
           <span class="debtor-name">👤 {{ abonado.cliente }}</span>
           <span class="debtor-amount">${{ abonado.saldo.toLocaleString('es-CO') }}</span>
           <span class="debtor-count">saldo pendiente</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- COMISIONES DEL DÍA -->
+    <section class="daily-panels">
+      <div class="daily-panel commission-panel">
+        <div class="panel-header">
+          <span class="panel-icon">💼</span>
+          <div>
+            <h3>Comisiones de hoy</h3>
+            <p>Porcentaje correspondiente a cada barbero</p>
+          </div>
+        </div>
+        <div class="commission-grid">
+          <div v-for="barbero in listaBarberos" :key="barbero.nombre" class="commission-card">
+            <span class="commission-name">💈 {{ barbero.nombre }}</span>
+            <span class="commission-percent">{{ barbero.comision }}%</span>
+            <strong>${{ calcularComisionBarbero(barbero.nombre).toLocaleString('es-CO') }}</strong>
+          </div>
         </div>
       </div>
     </section>
@@ -269,8 +291,26 @@
             </div>
           </div>
 
+          <div v-if="servicio.fotoAntes || servicio.fotoDespues" class="card-photos">
+            <div v-if="servicio.fotoAntes">
+              <span>Antes</span>
+              <img :src="servicio.fotoAntes" alt="Foto antes del servicio" />
+            </div>
+            <div v-if="servicio.fotoDespues">
+              <span>Después</span>
+              <img :src="servicio.fotoDespues" alt="Foto después del servicio" />
+            </div>
+          </div>
+
           <div class="card-actions">
-            <span v-if="servicioYaFinalizo(servicio)" class="servicio-finalizado">
+            <span
+              v-if="servicio.estado === 'Abonado' && calcularSaldoRegistro(servicio) > 0"
+              class="servicio-abono-activo"
+            >
+              💰 Saldo pendiente: ${{ calcularSaldoRegistro(servicio).toLocaleString('es-CO') }}
+            </span>
+
+            <span v-else-if="servicioYaFinalizo(servicio)" class="servicio-finalizado">
               🔒 Servicio finalizado
             </span>
 
@@ -306,7 +346,8 @@
         </div>
 
         <div v-if="alertaFrecuenteVisible" class="loyalty-alert">
-          🎉 ¡Cliente Frecuente! Esta persona ha venido {{ conteoClienteActual }} veces.
+          🎉 ¡Cliente frecuente, aplica 10% de descuento!
+          <span class="loyalty-count">{{ conteoClienteActual }} servicios registrados.</span>
         </div>
 
         <form @submit.prevent="guardarServicio" class="modal-form">
@@ -380,6 +421,11 @@
                 <span>Total de servicios:</span>
                 <strong>${{ calcularTotalFormulario().toLocaleString('es-CO') }}</strong>
               </div>
+
+              <div v-if="descuentoFidelidadActivo" class="discount-box">
+                <span>🎁 Descuento fidelidad (10%):</span>
+                <strong>-${{ calcularDescuentoFidelidad().toLocaleString('es-CO') }}</strong>
+              </div>
             </div>
 
             <!-- BARBERO -->
@@ -387,7 +433,7 @@
               <label>Seleccione el barbero:</label>
               <select v-model="form.barbero" :class="{ 'input-error': errores.barbero }">
                 <option value="">Seleccione el barbero...</option>
-                <option v-for="b in listaBarberos" :key="b" :value="b">{{ b }}</option>
+                <option v-for="b in listaBarberos" :key="b.nombre" :value="b.nombre">{{ b.nombre }}</option>
               </select>
               <span v-if="errores.barbero" class="error-msg">{{ errores.barbero }}</span>
             </div>
@@ -447,6 +493,7 @@
                 <option value="">Seleccione el estado del pago...</option>
                 <option value="Pagado">✅ Pagado</option>
                 <option value="Abonado">💰 Abonado</option>
+                <option value="Pendiente">⏳ Pendiente</option>
               </select>
               <span v-if="errores.estado" class="error-msg">{{ errores.estado }}</span>
             </div>
@@ -480,6 +527,25 @@
               <span v-if="errores.abono" class="error-msg">{{ errores.abono }}</span>
             </div>
 
+            <!-- FOTOS ANTES Y DESPUÉS -->
+            <div class="form-group full-width photos-form-box">
+              <label>Fotos del servicio (máximo 1 antes y 1 después):</label>
+              <div class="photos-grid">
+                <div class="photo-upload-box">
+                  <span>📷 Foto antes</span>
+                  <input type="file" accept="image/*" @change="cargarFotoAntes" />
+                  <img v-if="form.fotoAntes" :src="form.fotoAntes" class="photo-preview" />
+                </div>
+                <div class="photo-upload-box">
+                  <span>📷 Foto después</span>
+                  <input type="file" accept="image/*" @change="cargarFotoDespues" />
+                  <img v-if="form.fotoDespues" :src="form.fotoDespues" class="photo-preview" />
+                </div>
+              </div>
+              <span class="form-help">Las fotos se guardan en base64. Para no llenar localStorage, cada foto debe pesar máximo 800 KB.</span>
+              <span v-if="errores.fotos" class="error-msg">{{ errores.fotos }}</span>
+            </div>
+
             <!-- TOTAL -->
             <div class="form-group full-width">
               <div class="grand-total-box">
@@ -502,6 +568,80 @@
             </button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- MODAL CATÁLOGO -->
+    <div v-show="mostrarModalCatalogo" class="modal-backdrop">
+      <div class="modal-box modal-catalogo">
+        <div class="modal-header">
+          <div>
+            <h2>🧾 Catálogo de servicios</h2>
+            <p class="modal-subtitle">Don Ramiro puede crear, editar y eliminar servicios.</p>
+          </div>
+          <button @click="cerrarModalCatalogo" class="btn-close-modal">✖</button>
+        </div>
+
+        <div class="catalog-form">
+          <input type="text" v-model="nuevoServicio.nombre" placeholder="Nombre del servicio" />
+          <input type="text" inputmode="numeric" v-model="nuevoServicio.precio" placeholder="Precio base sugerido" />
+          <select v-model="nuevoServicio.tipo">
+            <option value="corte">Corte</option>
+            <option value="corte-barba">Corte + barba</option>
+            <option value="barba">Barba</option>
+            <option value="complementario">Complementario</option>
+          </select>
+          <button @click="guardarServicioCatalogo" class="btn-save">{{ servicioCatalogoEditando ? 'Actualizar' : 'Agregar' }}</button>
+        </div>
+        <span v-if="errores.catalogo" class="error-msg">{{ errores.catalogo }}</span>
+
+        <div class="catalog-list">
+          <div v-for="item in catalogoServicios" :key="item.nombre" class="catalog-item">
+            <div>
+              <strong>{{ item.nombre }}</strong>
+              <span>${{ Number(item.precio).toLocaleString('es-CO') }}</span>
+            </div>
+            <div class="catalog-actions">
+              <button @click="editarServicioCatalogo(item)" class="btn-catalog-edit">✏️</button>
+              <button @click="eliminarServicioCatalogo(item.nombre)" class="btn-catalog-delete">🗑️</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL CIERRE DE CAJA -->
+    <div v-show="mostrarModalCaja" class="modal-backdrop">
+      <div class="modal-box modal-caja">
+        <div class="modal-header">
+          <div>
+            <h2>💰 Cierre de caja diario</h2>
+            <p class="modal-subtitle">Resumen del {{ obtenerFechaHoyLocal() }}</p>
+          </div>
+          <button @click="cerrarModalCaja" class="btn-close-modal">✖</button>
+        </div>
+
+        <div class="cash-summary-grid">
+          <div><span>💵 Total en efectivo</span><strong>${{ calcularCajaDelDia().efectivo.toLocaleString('es-CO') }}</strong></div>
+          <div><span>📱 Total en transferencia</span><strong>${{ calcularCajaDelDia().transferencia.toLocaleString('es-CO') }}</strong></div>
+          <div><span>💳 Total en tarjeta</span><strong>${{ calcularCajaDelDia().tarjeta.toLocaleString('es-CO') }}</strong></div>
+          <div><span>⚠️ Pendiente por cobrar</span><strong>${{ calcularCajaDelDia().pendiente.toLocaleString('es-CO') }}</strong></div>
+        </div>
+
+        <div class="commission-summary">
+          <h3>Comisiones del día</h3>
+          <div v-for="barbero in listaBarberos" :key="barbero.nombre" class="commission-summary-row">
+            <span>{{ barbero.nombre }} ({{ barbero.comision }}%)</span>
+            <strong>${{ calcularComisionBarbero(barbero.nombre).toLocaleString('es-CO') }}</strong>
+          </div>
+        </div>
+
+        <p class="help-text">Al archivar, los servicios de hoy dejarán de aparecer en la vista principal, pero seguirán guardados en localStorage.</p>
+
+        <div class="modal-actions-right">
+          <button @click="cerrarModalCaja" class="btn-cancel">Cancelar</button>
+          <button @click="cerrarCajaYArchivar" class="btn-save">📦 Cerrar caja y archivar</button>
+        </div>
       </div>
     </div>
 
@@ -570,6 +710,26 @@ import { useLocalStorage } from '@vueuse/core'
 
 // Persistencia únicamente con useLocalStorage
 const servicios = useLocalStorage('don_ramiro_barberia_db', [])
+const catalogoServicios = useLocalStorage('don_ramiro_catalogo_servicios', [
+  { nombre: 'Corte clásico con tijera', precio: 18000, tipo: 'corte' },
+  { nombre: 'Low Fade', precio: 25000, tipo: 'corte' },
+  { nombre: 'Mid Fade', precio: 25000, tipo: 'corte' },
+  { nombre: 'High Fade', precio: 27000, tipo: 'corte' },
+  { nombre: 'Taper Fade', precio: 25000, tipo: 'corte' },
+  { nombre: 'Corte Buzz Cut', precio: 22000, tipo: 'corte' },
+  { nombre: 'Corte + Barba', precio: 35000, tipo: 'corte-barba' },
+  { nombre: 'Arreglo y perfilado de barba', precio: 15000, tipo: 'barba' },
+  { nombre: 'Perfilado de cejas', precio: 7000, tipo: 'complementario' },
+  { nombre: 'Diseño de línea', precio: 5000, tipo: 'complementario' }
+])
+const cierresCaja = useLocalStorage('don_ramiro_cierres_caja', [])
+
+// Barberos y porcentaje de comisión
+const listaBarberos = [
+  { nombre: 'Don Ramiro', comision: 50 },
+  { nombre: 'Empleado 1', comision: 40 },
+  { nombre: 'Empleado 2', comision: 40 }
+]
 
 // Estados de interfaz
 const mostrarModal = ref(false)
@@ -580,42 +740,38 @@ const mostrarModalCalificar = ref(false)
 const calificandoId = ref(null)
 const registrandoCliente = ref(false)
 const mostrarSelectorServicios = ref(false)
+const mostrarModalCaja = ref(false)
+const mostrarModalCatalogo = ref(false)
+const servicioCatalogoEditando = ref('')
 
 // Búsqueda y orden
 const busquedaCliente = ref('')
 const criterioOrden = ref('fecha-desc')
 const alertaFrecuenteVisible = ref(false)
 const conteoClienteActual = ref(0)
+const descuentoFidelidadActivo = ref(false)
 
-// Datos del negocio
-const listaBarberos = ['Don Ramiro', 'Empleado 1', 'Empleado 2']
-
-// Servicios reales de barbería con precios de ejemplo
-const catalogoServicios = [
-  { nombre: 'Corte clásico con tijera', precio: 18000 },
-  { nombre: 'Low Fade', precio: 25000 },
-  { nombre: 'Mid Fade', precio: 25000 },
-  { nombre: 'High Fade', precio: 27000 },
-  { nombre: 'Taper Fade', precio: 25000 },
-  { nombre: 'Corte Buzz Cut', precio: 22000 },
-  { nombre: 'Corte + Barba', precio: 35000 },
-  { nombre: 'Arreglo y perfilado de barba', precio: 15000 },
-  { nombre: 'Perfilado de cejas', precio: 7000 },
-  { nombre: 'Diseño de línea', precio: 5000 }
-]
+// Catálogo editable
+const nuevoServicio = ref({ nombre: '', precio: '', tipo: 'complementario' })
 
 // Formulario principal
-const form = ref({
-  cliente: '',
-  serviciosSeleccionados: [],
-  barbero: '',
-  fecha: '',
-  hora: '',
-  propina: '',
-  metodoPago: '',
-  estado: '',
-  abono: ''
-})
+function obtenerFormVacio() {
+  return {
+    cliente: '',
+    serviciosSeleccionados: [],
+    barbero: '',
+    fecha: '',
+    hora: '',
+    propina: '',
+    metodoPago: '',
+    estado: '',
+    abono: '',
+    fotoAntes: '',
+    fotoDespues: ''
+  }
+}
+
+const form = ref(obtenerFormVacio())
 
 // Formulario de calificación separado del registro
 const formCalificacion = ref({
@@ -623,11 +779,10 @@ const formCalificacion = ref({
   observaciones: ''
 })
 
-// Errores manejados por JavaScript, sin validaciones HTML
+// Errores manejados por JavaScript
 const errores = ref({})
 
 // -------------------- FECHA Y HORA --------------------
-
 function obtenerFechaHoyLocal() {
   const hoy = new Date()
   const anio = hoy.getFullYear()
@@ -641,436 +796,249 @@ function obtenerHoraActualLocal() {
   return `${String(hoy.getHours()).padStart(2, '0')}:${String(hoy.getMinutes()).padStart(2, '0')}`
 }
 
-function obtenerHoraInicial() {
-  const horaActual = obtenerHoraActualLocal()
-
-  if (horaActual < '08:00') return '08:00'
-  if (horaActual > '20:00') return '20:00'
-
-  return horaActual
-}
-
 function fechaEsAnteriorAHoy(fecha) {
   return fecha < obtenerFechaHoyLocal()
 }
 
-function servicioYaFinalizo(servicio) {
-  if (!servicio.fecha || !servicio.hora) {
-    return false
-  }
+// -------------------- SERVICIOS --------------------
+function obtenerTipoServicio(nombreServicio) {
+  const item = catalogoServicios.value.find(s => s.nombre === nombreServicio)
+  if (item && item.tipo) return item.tipo
 
-  const fechaActual = obtenerFechaHoyLocal()
-  const horaActual = obtenerHoraActualLocal()
-
-  if (servicio.fecha < fechaActual) {
-    return true
-  }
-
-  if (servicio.fecha === fechaActual && servicio.hora < horaActual) {
-    return true
-  }
-
-  return false
+  const nombre = String(nombreServicio || '').toLowerCase()
+  if (nombre.includes('corte') || nombre.includes('fade') || nombre.includes('buzz') || nombre.includes('taper')) return 'corte'
+  if (nombre.includes('barba')) return nombre.includes('corte') ? 'corte-barba' : 'barba'
+  return 'complementario'
 }
-
-function validarFechaYHora(err) {
-  const fecha = form.value.fecha
-  const hora = form.value.hora
-
-  if (!fecha) {
-    err.fecha = 'Seleccione la fecha del servicio.'
-    return false
-  }
-
-  if (fechaEsAnteriorAHoy(fecha)) {
-    err.fecha = 'No se puede seleccionar una fecha que ya pasó.'
-    return false
-  }
-
-  if (!hora) {
-    err.hora = 'Seleccione la hora del servicio.'
-    return false
-  }
-
-  if (hora < '08:00' || hora > '20:00') {
-    err.hora = 'El horario de atención es de 8:00 a. m. a 8:00 p. m.'
-    return false
-  }
-
-  if (fecha === obtenerFechaHoyLocal() && hora < obtenerHoraActualLocal()) {
-    err.hora = 'Para hoy no se puede registrar una hora que ya pasó.'
-    return false
-  }
-
-  return true
-}
-
-// -------------------- SERVICIOS Y PAGOS --------------------
 
 function esCorte(nombreServicio) {
-  return [
-    'Corte clásico con tijera',
-    'Low Fade',
-    'Mid Fade',
-    'High Fade',
-    'Taper Fade',
-    'Corte Buzz Cut',
-    'Corte + Barba'
-  ].includes(nombreServicio)
+  const tipo = obtenerTipoServicio(nombreServicio)
+  return tipo === 'corte' || tipo === 'corte-barba'
 }
 
 function esServicioConBarba(nombreServicio) {
-  return nombreServicio === 'Corte + Barba'
+  return obtenerTipoServicio(nombreServicio) === 'corte-barba'
 }
 
 function esArregloBarba(nombreServicio) {
-  return nombreServicio === 'Arreglo y perfilado de barba'
+  return obtenerTipoServicio(nombreServicio) === 'barba'
 }
 
 function puedeSeleccionarServicio(nombreServicio) {
   const seleccionados = form.value.serviciosSeleccionados
 
-  // Si el servicio ya está seleccionado, siempre se debe poder desmarcar.
-  if (seleccionados.includes(nombreServicio)) {
-    return true
-  }
+  if (seleccionados.includes(nombreServicio)) return true
 
-  // No permite seleccionar un segundo corte.
   if (esCorte(nombreServicio)) {
     for (let i = 0; i < seleccionados.length; i++) {
-      if (esCorte(seleccionados[i])) {
-        return false
-      }
+      if (esCorte(seleccionados[i])) return false
     }
   }
 
-  // Corte + Barba y Arreglo de barba son incompatibles.
-  if (esServicioConBarba(nombreServicio)) {
-    if (seleccionados.includes('Arreglo y perfilado de barba')) {
-      return false
-    }
-  }
-
-  if (esArregloBarba(nombreServicio)) {
-    if (seleccionados.includes('Corte + Barba')) {
-      return false
-    }
-  }
+  if (esServicioConBarba(nombreServicio) && seleccionados.includes('Arreglo y perfilado de barba')) return false
+  if (esArregloBarba(nombreServicio) && seleccionados.includes('Corte + Barba')) return false
 
   return true
 }
 
-function calcularTotalFormulario() {
+function obtenerServiciosDelRegistro(servicio) {
+  if (servicio.servicios && servicio.servicios.length > 0) return servicio.servicios
+  return servicio.tipoServicio ? [servicio.tipoServicio] : []
+}
+
+function calcularTotalBaseServicios(serviciosSeleccionados) {
   let total = 0
 
-  for (let i = 0; i < form.value.serviciosSeleccionados.length; i++) {
-    const nombre = form.value.serviciosSeleccionados[i]
-
-    for (let j = 0; j < catalogoServicios.length; j++) {
-      if (catalogoServicios[j].nombre === nombre) {
-        total += Number(catalogoServicios[j].precio)
-      }
-    }
+  for (let i = 0; i < serviciosSeleccionados.length; i++) {
+    const item = catalogoServicios.value.find(s => s.nombre === serviciosSeleccionados[i])
+    if (item) total += Number(item.precio || 0)
   }
 
   return total
 }
 
-function calcularTotalConPropina() {
-  const totalServicios = calcularTotalFormulario()
-  const propina = Number(form.value.propina || 0)
+function calcularDescuentoFidelidad() {
+  if (!descuentoFidelidadActivo.value) return 0
+  return Math.round(calcularTotalBaseServicios(form.value.serviciosSeleccionados) * 0.10)
+}
 
-  if (isNaN(propina) || propina < 0) return totalServicios
-  return totalServicios + propina
+function calcularTotalFormulario() {
+  const base = calcularTotalBaseServicios(form.value.serviciosSeleccionados)
+  return base - calcularDescuentoFidelidad()
+}
+
+function calcularTotalConPropina() {
+  return calcularTotalFormulario() + Number(form.value.propina || 0)
 }
 
 function calcularSaldoFormulario() {
   const total = calcularTotalConPropina()
   const abono = Number(form.value.abono || 0)
-
-  if (isNaN(abono) || abono < 0) return total
-  return Math.max(total - abono, 0)
+  return Math.max(0, total - abono)
 }
 
 function calcularSaldoRegistro(servicio) {
-  const total = Number(servicio.precio || 0) + Number(servicio.propina || 0)
-  const abono = Number(servicio.abono || 0)
-  return Math.max(total - abono, 0)
+  const total = Number(servicio.totalConPropina ?? (Number(servicio.precio || 0) + Number(servicio.propina || 0)))
+  return Math.max(0, total - Number(servicio.abono || 0))
 }
 
-function obtenerServiciosDelRegistro(servicio) {
-  if (servicio.servicios && servicio.servicios.length > 0) {
-    return servicio.servicios
-  }
+// -------------------- HISTORIAL Y ESTADÍSTICAS --------------------
+function contarServiciosCliente(nombre) {
+  const nombreNormalizado = String(nombre || '').trim().toLowerCase()
+  if (!nombreNormalizado) return 0
 
-  if (servicio.tipoServicio) {
-    return [servicio.tipoServicio]
-  }
-
-  return []
+  return servicios.value.filter(s => String(s.cliente || '').trim().toLowerCase() === nombreNormalizado).length
 }
 
-function seleccionarPrecioSugerido() {
-  // Se conserva como función normal para cumplir la estructura vista en clase.
-  // El total se calcula directamente a partir de los servicios seleccionados.
-  return calcularTotalFormulario()
-}
-
-// -------------------- ESTADÍSTICAS --------------------
-
-function calcularIngresosTotales() {
-  let total = 0
-
-  for (let i = 0; i < servicios.value.length; i++) {
-    const s = servicios.value[i]
-    total += Number(s.abono || 0)
-
-    if (s.estado === 'Pagado' && Number(s.abono || 0) === 0) {
-      total += Number(s.precio || 0) + Number(s.propina || 0)
-    }
-  }
-
-  return total
-}
-
-function contarAbonados() {
-  let contador = 0
-
-  for (let i = 0; i < servicios.value.length; i++) {
-    if (servicios.value[i].estado === 'Abonado') {
-      contador++
-    }
-  }
-
-  return contador
-}
-
-function calcularPromedioCalificacion() {
-  let suma = 0
-  let calificados = 0
-
-  for (let i = 0; i < servicios.value.length; i++) {
-    const cal = Number(servicios.value[i].calificacion || 0)
-
-    if (cal > 0) {
-      suma += cal
-      calificados++
-    }
-  }
-
-  if (calificados === 0) return '0.0'
-  return (suma / calificados).toFixed(1)
-}
-
-function obtenerBarberoDestacado() {
-  if (servicios.value.length === 0) return 'Ninguno'
-
-  const conteo = {}
-
-  for (let i = 0; i < servicios.value.length; i++) {
-    const b = servicios.value[i].barbero
-
-    if (b) {
-      conteo[b] = (conteo[b] || 0) + 1
-    }
-  }
-
-  let maxBarbero = 'Ninguno'
-  let maxCortes = 0
-
-  for (const barbero in conteo) {
-    if (conteo[barbero] > maxCortes) {
-      maxCortes = conteo[barbero]
-      maxBarbero = barbero
-    }
-  }
-
-  return maxBarbero
-}
-
-function obtenerUltimoAbono() {
-  for (let i = servicios.value.length - 1; i >= 0; i--) {
-    if (servicios.value[i].estado === 'Abonado') {
-      const servicio = servicios.value[i]
-
-      return {
-        cliente: servicio.cliente,
-        abono: Number(servicio.abono || 0),
-        total: Number(servicio.precio || 0) + Number(servicio.propina || 0),
-        saldo: calcularSaldoRegistro(servicio)
-      }
-    }
-  }
-
-  return null
-}
-
-function obtenerListaAbonados() {
-  const abonados = []
-
-  for (let i = 0; i < servicios.value.length; i++) {
-    const s = servicios.value[i]
-
-    if (s.estado === 'Abonado') {
-      abonados.push({
-        cliente: s.cliente,
-        saldo: calcularSaldoRegistro(s)
-      })
-    }
-  }
-
-  return abonados
-}
-
-function contarServiciosCliente(nombreCliente) {
-  if (!nombreCliente) return 0
-
-  const q = nombreCliente.toLowerCase().trim()
-  let contador = 0
-
-  for (let i = 0; i < servicios.value.length; i++) {
-    if (servicios.value[i].cliente.toLowerCase().trim().includes(q)) {
-      contador++
-    }
-  }
-
-  return contador
-}
-
-function calcularGastoTotalCliente(nombreCliente) {
-  if (!nombreCliente) return 0
-
-  const q = nombreCliente.toLowerCase().trim()
-  let total = 0
-
-  for (let i = 0; i < servicios.value.length; i++) {
-    const s = servicios.value[i]
-
-    if (s.cliente.toLowerCase().trim().includes(q)) {
-      total += Number(s.abono || 0)
-
-      if (s.estado === 'Pagado' && Number(s.abono || 0) === 0) {
-        total += Number(s.precio || 0) + Number(s.propina || 0)
-      }
-    }
-  }
-
-  return total
+function calcularGastoTotalCliente(nombre) {
+  const nombreNormalizado = String(nombre || '').trim().toLowerCase()
+  return servicios.value
+    .filter(s => String(s.cliente || '').trim().toLowerCase() === nombreNormalizado)
+    .reduce((total, s) => total + Number(s.totalConPropina ?? (Number(s.precio || 0) + Number(s.propina || 0))), 0)
 }
 
 function obtenerServiciosFiltrados() {
-  let lista = [...servicios.value]
+  let lista = servicios.value.filter(s => !s.archivado)
 
   if (busquedaCliente.value.trim()) {
-    const query = busquedaCliente.value.toLowerCase().trim()
-
-    lista = lista.filter(s =>
-      s.cliente.toLowerCase().includes(query)
-    )
+    const busqueda = busquedaCliente.value.trim().toLowerCase()
+    lista = lista.filter(s => String(s.cliente || '').toLowerCase().includes(busqueda))
   }
 
-  if (criterioOrden.value === 'fecha-desc') {
-    lista.sort((a, b) =>
-      new Date(b.fecha + 'T' + (b.hora || '00:00')) -
-      new Date(a.fecha + 'T' + (a.hora || '00:00'))
-    )
-  } else if (criterioOrden.value === 'precio-desc') {
-    lista.sort((a, b) =>
-      Number(b.precio || 0) - Number(a.precio || 0)
-    )
+  if (criterioOrden.value === 'precio-desc') {
+    lista.sort((a, b) => Number(b.totalConPropina ?? b.precio ?? 0) - Number(a.totalConPropina ?? a.precio ?? 0))
   } else if (criterioOrden.value === 'calificacion-desc') {
-    lista.sort((a, b) =>
-      Number(b.calificacion || 0) - Number(a.calificacion || 0)
-    )
+    lista.sort((a, b) => Number(b.calificacion || 0) - Number(a.calificacion || 0))
+  } else {
+    lista.sort((a, b) => `${b.fecha || ''} ${b.hora || ''}`.localeCompare(`${a.fecha || ''} ${a.hora || ''}`))
   }
 
   return lista
 }
 
-function obtenerNombreTurno(horaStr) {
-  if (!horaStr) return 'Día'
+function calcularIngresosTotales() {
+  return servicios.value
+    .filter(s => !s.archivado)
+    .reduce((total, s) => total + Number(s.abono || 0), 0)
+}
 
-  const horaNum = parseInt(horaStr.split(':')[0], 10)
+function contarAbonados() {
+  return servicios.value.filter(s => !s.archivado && s.estado === 'Abonado' && calcularSaldoRegistro(s) > 0).length
+}
 
-  if (horaNum < 12) return 'Mañana'
-  if (horaNum < 18) return 'Tarde'
+function calcularPromedioCalificacion() {
+  const calificadas = servicios.value.filter(s => !s.archivado && Number(s.calificacion || 0) > 0)
+  if (calificadas.length === 0) return '0.0'
+  const total = calificadas.reduce((sum, s) => sum + Number(s.calificacion), 0)
+  return (total / calificadas.length).toFixed(1)
+}
 
+function obtenerBarberoDestacado() {
+  const conteo = {}
+  servicios.value.filter(s => !s.archivado).forEach(s => {
+    if (!conteo[s.barbero]) conteo[s.barbero] = 0
+    conteo[s.barbero]++
+  })
+
+  let nombre = 'Sin registros'
+  let mayor = 0
+  Object.keys(conteo).forEach(nombreBarbero => {
+    if (conteo[nombreBarbero] > mayor) {
+      mayor = conteo[nombreBarbero]
+      nombre = nombreBarbero
+    }
+  })
+  return nombre
+}
+
+function obtenerUltimoAbono() {
+  const lista = servicios.value.filter(s => Number(s.abono || 0) > 0)
+  if (lista.length === 0) return null
+  const ultimo = lista[lista.length - 1]
+  return {
+    cliente: ultimo.cliente,
+    abono: Number(ultimo.abono || 0),
+    total: Number(ultimo.totalConPropina ?? (Number(ultimo.precio || 0) + Number(ultimo.propina || 0))),
+    saldo: calcularSaldoRegistro(ultimo)
+  }
+}
+
+function obtenerListaAbonados() {
+  return servicios.value
+    .filter(s => !s.archivado && calcularSaldoRegistro(s) > 0)
+    .map(s => ({ cliente: s.cliente, saldo: calcularSaldoRegistro(s) }))
+}
+
+function obtenerNombreTurno(hora) {
+  if (!hora) return ''
+  const h = Number(String(hora).split(':')[0])
+  if (h < 12) return 'Mañana'
+  if (h < 18) return 'Tarde'
   return 'Noche'
 }
 
-function obtenerClaseTurno(horaStr) {
-  const turno = obtenerNombreTurno(horaStr)
-
-  if (turno === 'Mañana') return 'shift-morning'
-  if (turno === 'Tarde') return 'shift-afternoon'
-
+function obtenerClaseTurno(hora) {
+  if (!hora) return ''
+  const h = Number(String(hora).split(':')[0])
+  if (h < 12) return 'shift-morning'
+  if (h < 18) return 'shift-afternoon'
   return 'shift-night'
 }
 
-// -------------------- FORMULARIO --------------------
-
-function obtenerFormVacio() {
-  return {
-    cliente: '',
-    serviciosSeleccionados: [],
-    barbero: '',
-    fecha: obtenerFechaHoyLocal(),
-    hora: obtenerHoraInicial(),
-    propina: '',
-    metodoPago: '',
-    estado: '',
-    abono: ''
-  }
-}
-
+// -------------------- FIDELIDAD --------------------
 function verificarClienteFrecuente() {
-  if (form.value.cliente.trim().length >= 3) {
-    const conteo = contarServiciosCliente(form.value.cliente)
-    conteoClienteActual.value = conteo
+  if (editandoId.value) return
 
-    if (conteo >= 5) {
-      alertaFrecuenteVisible.value = true
-      return
-    }
+  const nombre = form.value.cliente.trim()
+  if (nombre.length < 2) {
+    conteoClienteActual.value = 0
+    descuentoFidelidadActivo.value = false
+    alertaFrecuenteVisible.value = false
+    return
   }
 
-  alertaFrecuenteVisible.value = false
+  const conteo = contarServiciosCliente(nombre)
+  conteoClienteActual.value = conteo
+  descuentoFidelidadActivo.value = conteo >= 5
+  alertaFrecuenteVisible.value = conteo >= 5
 }
 
+// -------------------- ABRIR / EDITAR --------------------
 function abrirNuevoModal() {
   registrandoCliente.value = false
   form.value = obtenerFormVacio()
   editandoId.value = null
   errores.value = {}
   alertaFrecuenteVisible.value = false
+  descuentoFidelidadActivo.value = false
+  conteoClienteActual.value = 0
   mostrarSelectorServicios.value = false
   mostrarModal.value = true
 }
 
 function editarServicio(servicio) {
-  if (servicioYaFinalizo(servicio)) {
-    return
-  }
+  if (servicioYaFinalizo(servicio)) return
 
   registrandoCliente.value = false
   form.value = {
     cliente: servicio.cliente,
-    serviciosSeleccionados: servicio.servicios
-      ? [...servicio.servicios]
-      : (servicio.tipoServicio ? [servicio.tipoServicio] : []),
+    serviciosSeleccionados: obtenerServiciosDelRegistro(servicio),
     barbero: servicio.barbero,
     fecha: servicio.fecha,
     hora: servicio.hora,
     propina: servicio.propina || '',
     metodoPago: servicio.metodoPago || '',
     estado: servicio.estado || '',
-    abono: servicio.abono || ''
+    abono: servicio.abono || '',
+    fotoAntes: servicio.fotoAntes || '',
+    fotoDespues: servicio.fotoDespues || ''
   }
 
   editandoId.value = servicio.id
   errores.value = {}
   mostrarSelectorServicios.value = false
-  verificarClienteFrecuente()
+  descuentoFidelidadActivo.value = Boolean(servicio.descuentoFidelidad)
+  alertaFrecuenteVisible.value = false
   mostrarModal.value = true
 }
 
@@ -1079,62 +1047,130 @@ function cerrarModal() {
   mostrarModal.value = false
   errores.value = {}
   mostrarSelectorServicios.value = false
+  alertaFrecuenteVisible.value = false
+  descuentoFidelidadActivo.value = false
+  conteoClienteActual.value = 0
+  form.value = obtenerFormVacio()
+}
+
+// -------------------- VALIDACIONES --------------------
+function validarFechaYHora(err) {
+  if (!form.value.fecha) {
+    err.fecha = 'Seleccione una fecha.'
+  }
+
+  if (!form.value.hora) {
+    err.hora = 'Seleccione una hora.'
+    return
+  }
+
+  // Cuando estamos editando un servicio existente, permitimos conservar
+  // su fecha y hora aunque ya hayan pasado. Esto es necesario para poder
+  // actualizar un abono a "Pagado" y registrar el pago pendiente.
+  let esFechaHoraHistorica = false
+
+  if (editandoId.value) {
+    const servicioOriginal = servicios.value.find(s => s.id === editandoId.value)
+
+    if (
+      servicioOriginal &&
+      servicioOriginal.fecha === form.value.fecha &&
+      servicioOriginal.hora === form.value.hora
+    ) {
+      esFechaHoraHistorica = true
+    }
+  }
+
+  // Para un registro nuevo sí se mantienen las validaciones normales.
+  // Para una edición, solo se permite una fecha/hora vencida si es la
+  // misma fecha/hora que ya tenía el servicio.
+  if (!esFechaHoraHistorica) {
+    if (fechaEsAnteriorAHoy(form.value.fecha)) {
+      err.fecha = 'No puede seleccionar una fecha que ya pasó.'
+    }
+
+    if (form.value.fecha === obtenerFechaHoyLocal() && form.value.hora < obtenerHoraActualLocal()) {
+      err.hora = 'La hora seleccionada ya pasó.'
+    }
+  }
+
+  if (form.value.hora < '08:00' || form.value.hora > '20:00') {
+    err.hora = 'El horario de atención es de 8:00 a. m. a 8:00 p. m.'
+  }
 }
 
 function validarFormulario() {
   const err = {}
 
-  if (!form.value.cliente || form.value.cliente.trim().length < 2) {
-    err.cliente = 'Debe ingresar el nombre del cliente.'
-  }
-
-  if (!form.value.serviciosSeleccionados || form.value.serviciosSeleccionados.length === 0) {
-    err.servicios = 'Debe seleccionar al menos un servicio.'
-  }
-
-  if (!form.value.barbero) {
-    err.barbero = 'Seleccione el barbero que atendió.'
-  }
+  if (!form.value.cliente || form.value.cliente.trim().length < 2) err.cliente = 'Debe ingresar el nombre del cliente.'
+  if (!form.value.serviciosSeleccionados || form.value.serviciosSeleccionados.length === 0) err.servicios = 'Debe seleccionar al menos un servicio.'
+  if (!form.value.barbero) err.barbero = 'Seleccione el barbero que atendió.'
 
   validarFechaYHora(err)
 
   const propina = Number(form.value.propina || 0)
+  if (form.value.propina !== '' && (isNaN(propina) || propina < 0)) err.propina = 'La propina debe ser un valor válido de 0 o mayor.'
 
-  if (form.value.propina !== '' && (isNaN(propina) || propina < 0)) {
-    err.propina = 'La propina debe ser un valor válido de 0 o mayor.'
-  }
-
-  if (!form.value.metodoPago) {
-    err.metodoPago = 'Seleccione el método de pago.'
-  }
-
-  if (!form.value.estado) {
-    err.estado = 'Seleccione el estado del pago.'
-  }
+  if (!form.value.metodoPago) err.metodoPago = 'Seleccione el método de pago.'
+  if (!form.value.estado) err.estado = 'Seleccione el estado del pago.'
 
   const total = calcularTotalConPropina()
-
-  if (total <= 0) {
-    err.servicios = 'Seleccione servicios para calcular el total.'
-  }
+  if (total <= 0) err.servicios = 'Seleccione servicios para calcular el total.'
 
   if (form.value.estado === 'Abonado') {
     const abono = Number(form.value.abono || 0)
+    if (!form.value.abono || isNaN(abono) || abono <= 0) err.abono = 'Ingrese cuánto abonó el cliente.'
+    else if (abono >= total) err.abono = 'El abono debe ser menor que el total. Si paga todo, seleccione Pagado.'
+  }
 
-    if (!form.value.abono || isNaN(abono) || abono <= 0) {
-      err.abono = 'Ingrese cuánto abonó el cliente.'
-    } else if (abono >= total) {
-      err.abono = 'El abono debe ser menor que el total. Si paga todo, seleccione Pagado.'
-    }
+  if (form.value.estado === 'Pagado') {
+    form.value.abono = String(total)
+  }
+
+  if (form.value.estado === 'Pendiente') {
+    form.value.abono = '0'
   }
 
   errores.value = err
   return Object.keys(err).length === 0
 }
 
+// -------------------- FOTOS BASE64 --------------------
+function leerFotoBase64(evento, campo) {
+  const archivo = evento.target.files && evento.target.files[0]
+  if (!archivo) return
+
+  if (!archivo.type.startsWith('image/')) {
+    errores.value = { ...errores.value, fotos: 'Seleccione un archivo de imagen.' }
+    evento.target.value = ''
+    return
+  }
+
+  if (archivo.size > 800 * 1024) {
+    errores.value = { ...errores.value, fotos: 'Cada foto debe pesar máximo 800 KB para cuidar localStorage.' }
+    evento.target.value = ''
+    return
+  }
+
+  const lector = new FileReader()
+  lector.onload = () => {
+    form.value[campo] = lector.result
+    errores.value = { ...errores.value, fotos: '' }
+  }
+  lector.readAsDataURL(archivo)
+}
+
+function cargarFotoAntes(evento) {
+  leerFotoBase64(evento, 'fotoAntes')
+}
+
+function cargarFotoDespues(evento) {
+  leerFotoBase64(evento, 'fotoDespues')
+}
+
+// -------------------- GUARDAR SERVICIO --------------------
 function guardarServicio() {
   if (registrandoCliente.value) return
-
   if (!validarFormulario()) return
 
   registrandoCliente.value = true
@@ -1142,9 +1178,8 @@ function guardarServicio() {
   const total = calcularTotalFormulario()
   const propina = Number(form.value.propina || 0)
   const totalConPropina = total + propina
-  const abono = form.value.estado === 'Abonado'
-    ? Number(form.value.abono)
-    : totalConPropina
+  const abono = form.value.estado === 'Abonado' ? Number(form.value.abono) : (form.value.estado === 'Pagado' ? totalConPropina : 0)
+  const descuento = calcularDescuentoFidelidad()
 
   const datos = {
     cliente: form.value.cliente.trim(),
@@ -1154,29 +1189,30 @@ function guardarServicio() {
     fecha: form.value.fecha,
     hora: form.value.hora,
     precio: total,
+    precioBase: calcularTotalBaseServicios(form.value.serviciosSeleccionados),
+    descuento: descuento,
+    descuentoFidelidad: descuento > 0,
     propina: propina,
+    totalConPropina: totalConPropina,
     metodoPago: form.value.metodoPago,
     estado: form.value.estado,
-    abono: abono
+    abono: abono,
+    fotoAntes: form.value.fotoAntes || '',
+    fotoDespues: form.value.fotoDespues || '',
+    comisionPorcentaje: obtenerComisionPorcentaje(form.value.barbero)
   }
 
-  // Spinner de registro durante 1.5 segundos
   setTimeout(() => {
     if (editandoId.value) {
       const idx = servicios.value.findIndex(s => s.id === editandoId.value)
-
-      if (idx !== -1) {
-        servicios.value[idx] = {
-          ...servicios.value[idx],
-          ...datos
-        }
-      }
+      if (idx !== -1) servicios.value[idx] = { ...servicios.value[idx], ...datos }
     } else {
       servicios.value.push({
         id: Date.now(),
         ...datos,
         calificacion: 0,
-        observaciones: ''
+        observaciones: '',
+        archivado: false
       })
     }
 
@@ -1185,13 +1221,25 @@ function guardarServicio() {
   }, 1500)
 }
 
+// -------------------- BLOQUEO FINAL --------------------
+function servicioYaFinalizo(servicio) {
+  if (!servicio.fecha || !servicio.hora) return false
+  if (servicio.estado !== 'Pagado') return false
+
+  const tieneCalificacion = Number(servicio.calificacion || 0) > 0
+  const tieneObservaciones = typeof servicio.observaciones === 'string' && servicio.observaciones.trim().length > 0
+  if (!tieneCalificacion || !tieneObservaciones) return false
+
+  const fechaActual = obtenerFechaHoyLocal()
+  const horaActual = obtenerHoraActualLocal()
+  if (servicio.fecha < fechaActual) return true
+  if (servicio.fecha === fechaActual && servicio.hora < horaActual) return true
+  return false
+}
+
 function confirmarEliminacion(id) {
   const servicio = servicios.value.find(s => s.id === id)
-
-  if (!servicio || servicioYaFinalizo(servicio)) {
-    return
-  }
-
+  if (!servicio || servicioYaFinalizo(servicio)) return
   idAEliminar.value = id
   mostrarModalEliminar.value = true
 }
@@ -1202,16 +1250,13 @@ function ejecutarEliminacion() {
   idAEliminar.value = null
 }
 
-// -------------------- CALIFICACIÓN SEPARADA --------------------
-
+// -------------------- CALIFICACIÓN --------------------
 function abrirModalCalificar(servicio) {
   calificandoId.value = servicio.id
-
   formCalificacion.value = {
     calificacion: servicio.calificacion || 5,
     observaciones: servicio.observaciones || ''
   }
-
   mostrarModalCalificar.value = true
 }
 
@@ -1222,13 +1267,139 @@ function cerrarModalCalificar() {
 
 function guardarCalificacion() {
   const idx = servicios.value.findIndex(s => s.id === calificandoId.value)
-
   if (idx !== -1) {
     servicios.value[idx].calificacion = Number(formCalificacion.value.calificacion)
     servicios.value[idx].observaciones = formCalificacion.value.observaciones.trim()
   }
-
   cerrarModalCalificar()
+}
+
+// -------------------- CIERRE DE CAJA --------------------
+function obtenerServiciosDelDia() {
+  return servicios.value.filter(s => s.fecha === obtenerFechaHoyLocal() && !s.archivado)
+}
+
+function obtenerMontoCobrado(servicio) {
+  if (servicio.estado === 'Pagado') return Number(servicio.totalConPropina ?? (Number(servicio.precio || 0) + Number(servicio.propina || 0)))
+  if (servicio.estado === 'Abonado') return Number(servicio.abono || 0)
+  return 0
+}
+
+function calcularCajaDelDia() {
+  const resumen = { efectivo: 0, transferencia: 0, tarjeta: 0, pendiente: 0 }
+
+  obtenerServiciosDelDia().forEach(servicio => {
+    const cobrado = obtenerMontoCobrado(servicio)
+    if (servicio.metodoPago === 'Efectivo') resumen.efectivo += cobrado
+    if (servicio.metodoPago === 'Transferencia') resumen.transferencia += cobrado
+    if (servicio.metodoPago === 'Tarjeta') resumen.tarjeta += cobrado
+    resumen.pendiente += calcularSaldoRegistro(servicio)
+  })
+
+  return resumen
+}
+
+function obtenerComisionPorcentaje(nombre) {
+  const barbero = listaBarberos.find(b => b.nombre === nombre)
+  return barbero ? Number(barbero.comision) : 0
+}
+
+function calcularComisionBarbero(nombre) {
+  return obtenerServiciosDelDia()
+    .filter(s => s.barbero === nombre)
+    .reduce((total, s) => {
+      const porcentaje = Number(s.comisionPorcentaje ?? obtenerComisionPorcentaje(nombre))
+      return total + (Number(s.precio || 0) * porcentaje / 100)
+    }, 0)
+}
+
+function abrirModalCaja() {
+  mostrarModalCaja.value = true
+}
+
+function cerrarModalCaja() {
+  mostrarModalCaja.value = false
+}
+
+function cerrarCajaYArchivar() {
+  const delDia = obtenerServiciosDelDia()
+  const resumen = calcularCajaDelDia()
+
+  if (delDia.length > 0) {
+    delDia.forEach(servicio => {
+      const idx = servicios.value.findIndex(s => s.id === servicio.id)
+      if (idx !== -1) servicios.value[idx].archivado = true
+    })
+  }
+
+  cierresCaja.value.push({
+    id: Date.now(),
+    fecha: obtenerFechaHoyLocal(),
+    ...resumen,
+    comisiones: listaBarberos.map(b => ({
+      barbero: b.nombre,
+      porcentaje: b.comision,
+      valor: calcularComisionBarbero(b.nombre)
+    }))
+  })
+
+  cerrarModalCaja()
+}
+
+// -------------------- CATÁLOGO EDITABLE --------------------
+function abrirModalCatalogo() {
+  servicioCatalogoEditando.value = ''
+  nuevoServicio.value = { nombre: '', precio: '', tipo: 'complementario' }
+  errores.value = {}
+  mostrarModalCatalogo.value = true
+}
+
+function cerrarModalCatalogo() {
+  mostrarModalCatalogo.value = false
+  servicioCatalogoEditando.value = ''
+  nuevoServicio.value = { nombre: '', precio: '', tipo: 'complementario' }
+}
+
+function editarServicioCatalogo(item) {
+  servicioCatalogoEditando.value = item.nombre
+  nuevoServicio.value = { nombre: item.nombre, precio: item.precio, tipo: item.tipo || 'complementario' }
+}
+
+function guardarServicioCatalogo() {
+  const nombre = nuevoServicio.value.nombre.trim()
+  const precio = Number(nuevoServicio.value.precio)
+
+  if (!nombre) {
+    errores.value = { catalogo: 'Ingrese el nombre del servicio.' }
+    return
+  }
+
+  if (isNaN(precio) || precio <= 0) {
+    errores.value = { catalogo: 'Ingrese un precio base mayor que 0.' }
+    return
+  }
+
+  const existe = catalogoServicios.value.some(s => s.nombre.toLowerCase() === nombre.toLowerCase() && s.nombre !== servicioCatalogoEditando.value)
+  if (existe) {
+    errores.value = { catalogo: 'Ese servicio ya existe.' }
+    return
+  }
+
+  if (servicioCatalogoEditando.value) {
+    const idx = catalogoServicios.value.findIndex(s => s.nombre === servicioCatalogoEditando.value)
+    if (idx !== -1) catalogoServicios.value[idx] = { nombre, precio, tipo: nuevoServicio.value.tipo }
+  } else {
+    catalogoServicios.value.push({ nombre, precio, tipo: nuevoServicio.value.tipo })
+  }
+
+  errores.value = {}
+  servicioCatalogoEditando.value = ''
+  nuevoServicio.value = { nombre: '', precio: '' }
+}
+
+function eliminarServicioCatalogo(nombre) {
+  if (catalogoServicios.value.length <= 1) return
+  catalogoServicios.value = catalogoServicios.value.filter(s => s.nombre !== nombre)
 }
 </script>
 <style>
@@ -1941,21 +2112,21 @@ body {
 /* -------------------- AJUSTES SOLICITADOS -------------------- */
 
 
-/* Controles de fecha y hora visibles */
+/* Fecha y hora: mismas cajas oscuras, controles más visibles */
 .form-group input[type="date"],
 .form-group input[type="time"] {
-  background: #f8fafc;
-  color: #0f172a;
-  color-scheme: light;
-  border: 2px solid #64748b;
+  background: #0f172a;
+  color: #e2e8f0;
+  color-scheme: dark;
+  border: 1px solid var(--border-color);
   font-weight: 700;
   min-height: 44px;
 }
 
 .form-group input[type="date"]:focus,
 .form-group input[type="time"]:focus {
-  background: #ffffff;
-  color: #0f172a;
+  background: #0f172a;
+  color: #f8fafc;
   border-color: var(--accent-gold);
 }
 
@@ -1965,12 +2136,28 @@ body {
   cursor: pointer;
   width: 20px;
   height: 20px;
+  filter: invert(1);
 }
 
 .servicios-ayuda {
   display: block;
   margin-top: 2px;
   color: #cbd5e1;
+}
+
+
+.servicio-abono-activo {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: var(--warning-color);
+  font-size: 0.78rem;
+  font-weight: 800;
 }
 
 .servicio-finalizado {
@@ -2320,6 +2507,353 @@ body {
   .service-tags {
     padding-right: 0;
   }
+}
+
+
+/* -------------------- NUEVAS FUNCIONES DEL SISTEMA -------------------- */
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.btn-secondary-header {
+  background: #334155;
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.btn-secondary-header:hover {
+  border-color: var(--accent-gold);
+  color: var(--accent-gold);
+}
+
+.daily-panels {
+  width: 100%;
+}
+
+.daily-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 16px 20px;
+}
+
+.daily-panel .panel-header {
+  margin-bottom: 12px;
+}
+
+.daily-panel .panel-header h3 {
+  color: var(--accent-gold);
+}
+
+.daily-panel .panel-header p {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
+.commission-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.commission-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+  padding: 12px;
+  background: #0f172a;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+}
+
+.commission-name {
+  color: var(--text-main);
+  font-weight: 700;
+}
+
+.commission-percent {
+  color: var(--accent-gold);
+  font-weight: 800;
+}
+
+.commission-card strong {
+  grid-column: 1 / -1;
+  color: var(--success-color);
+  font-size: 1.05rem;
+}
+
+.loyalty-count {
+  display: block;
+  color: var(--text-main);
+  font-size: 0.75rem;
+  margin-top: 3px;
+}
+
+.discount-box {
+  margin-top: 8px;
+  padding: 10px 13px;
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  background: rgba(245, 158, 11, 0.10);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: var(--accent-gold);
+}
+
+.photos-form-box {
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.photos-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.photo-upload-box {
+  background: #0f172a;
+  border: 1px dashed var(--border-color);
+  border-radius: 9px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.photo-upload-box > span {
+  color: var(--text-main);
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.photo-upload-box input[type="file"] {
+  padding: 7px;
+  font-size: 0.75rem;
+}
+
+.photo-preview {
+  width: 100%;
+  height: 130px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.card-photos {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.card-photos div {
+  background: #0f172a;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 5px;
+}
+
+.card-photos span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  margin-bottom: 4px;
+}
+
+.card-photos img {
+  width: 100%;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.modal-caja,
+.modal-catalogo {
+  max-width: 760px;
+}
+
+.cash-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.cash-summary-grid div {
+  background: #0f172a;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.cash-summary-grid span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  margin-bottom: 5px;
+}
+
+.cash-summary-grid strong {
+  color: var(--success-color);
+  font-size: 1.1rem;
+}
+
+.commission-summary {
+  margin-top: 14px;
+  background: #0f172a;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.commission-summary h3 {
+  color: var(--accent-gold);
+  font-size: 0.95rem;
+  margin-bottom: 8px;
+}
+
+.commission-summary-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.84rem;
+}
+
+.commission-summary-row:last-child {
+  border-bottom: none;
+}
+
+.commission-summary-row strong {
+  color: var(--success-color);
+}
+
+.catalog-form {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 1fr auto;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.catalog-form input,
+.catalog-form select {
+  background: #0f172a;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 10px;
+  color: var(--text-main);
+}
+
+.catalog-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.catalog-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  background: #0f172a;
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  padding: 10px 12px;
+}
+
+.catalog-item > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.catalog-item strong {
+  color: var(--text-main);
+}
+
+.catalog-item span {
+  color: var(--accent-gold);
+  font-size: 0.78rem;
+}
+
+.catalog-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.btn-catalog-edit,
+.btn-catalog-delete {
+  border: none;
+  border-radius: 7px;
+  padding: 7px 9px;
+  cursor: pointer;
+}
+
+.btn-catalog-edit {
+  background: #334155;
+  color: var(--text-main);
+}
+
+.btn-catalog-delete {
+  background: rgba(239, 68, 68, 0.18);
+  color: var(--danger-color);
+}
+
+@media (max-width: 900px) {
+  .commission-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .catalog-form {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .header-actions {
+    justify-content: stretch;
+  }
+
+  .header-actions button {
+    flex: 1;
+  }
+
+  .photos-grid,
+  .cash-summary-grid,
+  .catalog-form {
+    grid-template-columns: 1fr;
+  }
+
+  .card-photos {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* Iconos de calendario y reloj más visibles */
+.form-group input[type="date"]::-webkit-calendar-picker-indicator,
+.form-group input[type="time"]::-webkit-calendar-picker-indicator {
+  opacity: 1;
+  cursor: pointer;
+  width: 22px;
+  height: 22px;
+  filter: brightness(0) invert(1);
+}
+
+.form-group input[type="date"],
+.form-group input[type="time"] {
+  color-scheme: dark;
 }
 
 </style>
