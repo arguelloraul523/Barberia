@@ -311,23 +311,45 @@
             <div class="form-group full-width">
               <label>Seleccione los servicios:</label>
 
-              <div class="services-selector">
-                <label
-                  v-for="item in catalogoServicios"
-                  :key="item.nombre"
-                  class="service-option"
-                  :class="{ selected: form.serviciosSeleccionados.includes(item.nombre) }"
+              <div class="services-dropdown">
+                <button
+                  type="button"
+                  @click="mostrarSelectorServicios = !mostrarSelectorServicios"
+                  class="services-dropdown-button"
                 >
-                  <input
-                    type="checkbox"
-                    v-model="form.serviciosSeleccionados"
-                    :value="item.nombre"
-                  />
-                  <span class="service-option-text">
-                    <strong>{{ item.nombre }}</strong>
-                    <span>${{ item.precio.toLocaleString('es-CO') }}</span>
+                  <span>
+                    ✂️
+                    {{ form.serviciosSeleccionados.length > 0
+                      ? form.serviciosSeleccionados.length + ' servicio(s) seleccionado(s)'
+                      : 'Seleccione los servicios...' }}
                   </span>
-                </label>
+                  <span>{{ mostrarSelectorServicios ? '▲' : '▼' }}</span>
+                </button>
+
+                <div v-show="mostrarSelectorServicios" class="services-dropdown-menu">
+                  <label
+                    v-for="item in catalogoServicios"
+                    :key="item.nombre"
+                    class="service-option"
+                    :class="{ selected: form.serviciosSeleccionados.includes(item.nombre) }"
+                  >
+                    <input
+                      type="checkbox"
+                      v-model="form.serviciosSeleccionados"
+                      :value="item.nombre"
+                    />
+                    <span class="service-option-text">
+                      <strong>{{ item.nombre }}</strong>
+                      <span>${{ item.precio.toLocaleString('es-CO') }}</span>
+                    </span>
+                    <span
+                      v-if="form.serviciosSeleccionados.includes(item.nombre)"
+                      class="service-check"
+                    >
+                      ✓
+                    </span>
+                  </label>
+                </div>
               </div>
 
               <span v-if="errores.servicios" class="error-msg">{{ errores.servicios }}</span>
@@ -371,7 +393,6 @@
               <span v-if="errores.hora" class="error-msg">{{ errores.hora }}</span>
             </div>
 
-            <!-- PROPINA -->
             <div class="form-group">
               <label>Propina ($ opcional):</label>
               <input
@@ -383,8 +404,6 @@
               />
               <span v-if="errores.propina" class="error-msg">{{ errores.propina }}</span>
             </div>
-
-            <!-- MÉTODO DE PAGO -->
             <div class="form-group">
               <label>Seleccione el método de pago:</label>
               <select v-model="form.metodoPago" :class="{ 'input-error': errores.metodoPago }">
@@ -396,7 +415,6 @@
               <span v-if="errores.metodoPago" class="error-msg">{{ errores.metodoPago }}</span>
             </div>
 
-            <!-- ESTADO DEL PAGO -->
             <div class="form-group">
               <label>Seleccione el estado del pago:</label>
               <select v-model="form.estado" :class="{ 'input-error': errores.estado }">
@@ -407,7 +425,6 @@
               <span v-if="errores.estado" class="error-msg">{{ errores.estado }}</span>
             </div>
 
-            <!-- ABONO -->
             <div v-if="form.estado === 'Abonado'" class="form-group full-width abono-form-box">
               <label>¿Cuánto abonó el cliente?</label>
               <input
@@ -436,7 +453,6 @@
               <span v-if="errores.abono" class="error-msg">{{ errores.abono }}</span>
             </div>
 
-            <!-- TOTAL -->
             <div class="form-group full-width">
               <div class="grand-total-box">
                 <span>Total a pagar:</span>
@@ -447,15 +463,20 @@
 
           <div class="form-footer">
             <button type="button" @click="cerrarModal" class="btn-cancel">Cancelar</button>
-            <button type="submit" class="btn-save">
-              {{ editandoId ? 'Actualizar Registro' : 'Guardar Servicio' }}
+            <button
+              type="submit"
+              class="btn-save"
+              :disabled="registrandoCliente"
+            >
+              <span v-if="registrandoCliente" class="spinner"></span>
+              <span v-if="registrandoCliente">Registrando...</span>
+              <span v-else>{{ editandoId ? 'Actualizar Registro' : 'Guardar Servicio' }}</span>
             </button>
           </div>
         </form>
       </div>
     </div>
 
-    <!-- MODAL ELIMINAR -->
     <div v-show="mostrarModalEliminar" class="modal-backdrop">
       <div class="modal-box modal-small text-center">
         <div class="warning-icon">⚠️</div>
@@ -469,7 +490,6 @@
       </div>
     </div>
 
-    <!-- MODAL DE CALIFICACIÓN SEPARADO -->
     <div v-show="mostrarModalCalificar" class="modal-backdrop">
       <div class="modal-box modal-small">
         <div class="modal-header">
@@ -518,27 +538,23 @@
 import { ref } from 'vue'
 import { useLocalStorage } from '@vueuse/core'
 
-// Persistencia únicamente con useLocalStorage
 const servicios = useLocalStorage('don_ramiro_barberia_db', [])
-
-// Estados de interfaz
 const mostrarModal = ref(false)
 const editandoId = ref(null)
 const mostrarModalEliminar = ref(false)
 const idAEliminar = ref(null)
 const mostrarModalCalificar = ref(false)
 const calificandoId = ref(null)
+const registrandoCliente = ref(false)
+const mostrarSelectorServicios = ref(false)
 
-// Búsqueda y orden
 const busquedaCliente = ref('')
 const criterioOrden = ref('fecha-desc')
 const alertaFrecuenteVisible = ref(false)
 const conteoClienteActual = ref(0)
 
-// Datos del negocio
 const listaBarberos = ['Don Ramiro', 'Empleado 1', 'Empleado 2']
 
-// Servicios reales de barbería con precios de ejemplo
 const catalogoServicios = [
   { nombre: 'Corte clásico con tijera', precio: 18000 },
   { nombre: 'Low Fade', precio: 25000 },
@@ -552,7 +568,6 @@ const catalogoServicios = [
   { nombre: 'Diseño de línea', precio: 5000 }
 ]
 
-// Formulario principal
 const form = ref({
   cliente: '',
   serviciosSeleccionados: [],
@@ -565,16 +580,12 @@ const form = ref({
   abono: ''
 })
 
-// Formulario de calificación separado del registro
 const formCalificacion = ref({
   calificacion: 5,
   observaciones: ''
 })
 
-// Errores manejados por JavaScript, sin validaciones HTML
 const errores = ref({})
-
-// -------------------- FECHA Y HORA --------------------
 
 function obtenerFechaHoyLocal() {
   const hoy = new Date()
@@ -634,8 +645,6 @@ function validarFechaYHora(err) {
   return true
 }
 
-// -------------------- SERVICIOS Y PAGOS --------------------
-
 function calcularTotalFormulario() {
   let total = 0
 
@@ -687,12 +696,9 @@ function obtenerServiciosDelRegistro(servicio) {
 }
 
 function seleccionarPrecioSugerido() {
-  // Se conserva como función normal para cumplir la estructura vista en clase.
-  // El total se calcula directamente a partir de los servicios seleccionados.
+
   return calcularTotalFormulario()
 }
-
-// -------------------- ESTADÍSTICAS --------------------
 
 function calcularIngresosTotales() {
   let total = 0
@@ -883,8 +889,6 @@ function obtenerClaseTurno(horaStr) {
   return 'shift-night'
 }
 
-// -------------------- FORMULARIO --------------------
-
 function obtenerFormVacio() {
   return {
     cliente: '',
@@ -914,14 +918,17 @@ function verificarClienteFrecuente() {
 }
 
 function abrirNuevoModal() {
+  registrandoCliente.value = false
   form.value = obtenerFormVacio()
   editandoId.value = null
   errores.value = {}
   alertaFrecuenteVisible.value = false
+  mostrarSelectorServicios.value = false
   mostrarModal.value = true
 }
 
 function editarServicio(servicio) {
+  registrandoCliente.value = false
   form.value = {
     cliente: servicio.cliente,
     serviciosSeleccionados: servicio.servicios
@@ -938,13 +945,16 @@ function editarServicio(servicio) {
 
   editandoId.value = servicio.id
   errores.value = {}
+  mostrarSelectorServicios.value = false
   verificarClienteFrecuente()
   mostrarModal.value = true
 }
 
 function cerrarModal() {
+  registrandoCliente.value = false
   mostrarModal.value = false
   errores.value = {}
+  mostrarSelectorServicios.value = false
 }
 
 function validarFormulario() {
@@ -999,7 +1009,11 @@ function validarFormulario() {
 }
 
 function guardarServicio() {
+  if (registrandoCliente.value) return
+
   if (!validarFormulario()) return
+
+  registrandoCliente.value = true
 
   const total = calcularTotalFormulario()
   const propina = Number(form.value.propina || 0)
@@ -1022,28 +1036,29 @@ function guardarServicio() {
     abono: abono
   }
 
-  if (editandoId.value) {
-    const idx = servicios.value.findIndex(s => s.id === editandoId.value)
+  setTimeout(() => {
+    if (editandoId.value) {
+      const idx = servicios.value.findIndex(s => s.id === editandoId.value)
 
-    if (idx !== -1) {
-      servicios.value[idx] = {
-        ...servicios.value[idx],
-        ...datos
+      if (idx !== -1) {
+        servicios.value[idx] = {
+          ...servicios.value[idx],
+          ...datos
+        }
       }
+    } else {
+      servicios.value.push({
+        id: Date.now(),
+        ...datos,
+        calificacion: 0,
+        observaciones: ''
+      })
     }
-  } else {
-    servicios.value.push({
-      id: Date.now(),
-      ...datos,
-      calificacion: 0,
-      observaciones: ''
-    })
-  }
 
-  cerrarModal()
+    registrandoCliente.value = false
+    cerrarModal()
+  }, 1500)
 }
-
-// -------------------- ELIMINACIÓN --------------------
 
 function confirmarEliminacion(id) {
   idAEliminar.value = id
@@ -1055,8 +1070,6 @@ function ejecutarEliminacion() {
   mostrarModalEliminar.value = false
   idAEliminar.value = null
 }
-
-// -------------------- CALIFICACIÓN SEPARADA --------------------
 
 function abrirModalCalificar(servicio) {
   calificandoId.value = servicio.id
@@ -1087,7 +1100,6 @@ function guardarCalificacion() {
 </script>
 <style>
 
-/* Reset y variables de diseño Full Screen */
 :root {
   --bg-dark: #0f172a;
   --bg-card: #1e293b;
@@ -1127,7 +1139,6 @@ body {
   gap: 22px;
 }
 
-/* Header */
 .barber-header {
   display: flex;
   justify-content: space-between;
@@ -1182,7 +1193,6 @@ body {
   box-shadow: 0 6px 20px rgba(245, 158, 11, 0.45);
 }
 
-/* Dashboard de Estadísticas */
 .stats-dashboard {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
@@ -1277,7 +1287,6 @@ body {
   font-size: 0.75rem;
 }
 
-/* Barra de Controles y Búsqueda */
 .controls-bar {
   display: flex;
   flex-wrap: wrap;
@@ -1366,7 +1375,6 @@ body {
   border-color: var(--accent-gold);
 }
 
-/* Rejilla de Tarjetas */
 .services-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -1578,7 +1586,6 @@ body {
 
 .btn-action-edit:hover, .btn-action-delete:hover { opacity: 0.85; }
 
-/* Modales */
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1703,6 +1710,29 @@ body {
   cursor: pointer;
 }
 
+.btn-save:disabled {
+  opacity: 0.75;
+  cursor: not-allowed;
+}
+
+.spinner {
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  margin-right: 8px;
+  border: 2px solid rgba(15, 23, 42, 0.35);
+  border-top-color: #0f172a;
+  border-radius: 50%;
+  vertical-align: -3px;
+  animation: girar-spinner 0.7s linear infinite;
+}
+
+@keyframes girar-spinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .btn-confirm-delete {
   background: var(--danger-color);
   color: white;
@@ -1723,7 +1753,6 @@ body {
 
 .empty-icon { font-size: 3rem; margin-bottom: 10px; }
 
-/* Calificación por Estrellas */
 .star-buttons {
   display: flex;
   gap: 8px;
@@ -1768,8 +1797,6 @@ body {
   .controls-bar { flex-direction: column; align-items: stretch; }
   .sort-buttons { flex-wrap: wrap; justify-content: center; }
 }
-
-/* -------------------- AJUSTES SOLICITADOS -------------------- */
 
 .main-content {
   width: 100%;
@@ -1905,12 +1932,43 @@ body {
   margin-top: 3px;
 }
 
-.services-selector {
+.services-dropdown {
+  position: relative;
+  width: 100%;
+}
+
+.services-dropdown-button {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #0f172a;
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+  transition: 0.2s;
+}
+
+.services-dropdown-button:hover {
+  border-color: var(--accent-gold);
+}
+
+.services-dropdown-menu {
+  margin-top: 7px;
+  max-height: 300px;
+  overflow-y: auto;
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 8px;
   background: #0f172a;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--accent-gold);
   border-radius: 10px;
   padding: 10px;
 }
@@ -1919,6 +1977,7 @@ body {
   display: flex;
   align-items: center;
   gap: 9px;
+  min-height: 58px;
   padding: 10px;
   background: #1e293b;
   border: 1px solid var(--border-color);
@@ -1934,6 +1993,9 @@ body {
 }
 
 .service-option input {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
   accent-color: var(--accent-gold);
 }
 
@@ -1941,6 +2003,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex: 1;
 }
 
 .service-option-text strong {
@@ -1951,6 +2014,12 @@ body {
 .service-option-text span {
   color: var(--accent-gold);
   font-size: 0.75rem;
+}
+
+.service-check {
+  color: var(--success-color);
+  font-size: 1.1rem;
+  font-weight: 900;
 }
 
 .form-total-box,
@@ -2030,7 +2099,7 @@ body {
 }
 
 @media (max-width: 600px) {
-  .services-selector {
+  .services-dropdown-menu {
     grid-template-columns: 1fr;
   }
 
