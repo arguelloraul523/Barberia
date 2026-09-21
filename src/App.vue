@@ -739,6 +739,13 @@ const idAEliminar = ref(null)
 const mostrarModalCalificar = ref(false)
 const calificandoId = ref(null)
 const registrandoCliente = ref(false)
+
+// Reloj reactivo: actualiza la hora cada segundo para que las tarjetas
+// se bloqueen automáticamente justo cuando termina la hora de atención.
+const relojActual = ref(Date.now())
+setInterval(() => {
+  relojActual.value = Date.now()
+}, 1000)
 const mostrarSelectorServicios = ref(false)
 const mostrarModalCaja = ref(false)
 const mostrarModalCatalogo = ref(false)
@@ -784,7 +791,7 @@ const errores = ref({})
 
 // -------------------- FECHA Y HORA --------------------
 function obtenerFechaHoyLocal() {
-  const hoy = new Date()
+  const hoy = new Date(relojActual.value)
   const anio = hoy.getFullYear()
   const mes = String(hoy.getMonth() + 1).padStart(2, '0')
   const dia = String(hoy.getDate()).padStart(2, '0')
@@ -792,7 +799,7 @@ function obtenerFechaHoyLocal() {
 }
 
 function obtenerHoraActualLocal() {
-  const hoy = new Date()
+  const hoy = new Date(relojActual.value)
   return `${String(hoy.getHours()).padStart(2, '0')}:${String(hoy.getMinutes()).padStart(2, '0')}`
 }
 
@@ -1223,18 +1230,49 @@ function guardarServicio() {
 
 // -------------------- BLOQUEO FINAL --------------------
 function servicioYaFinalizo(servicio) {
-  if (!servicio.fecha || !servicio.hora) return false
-  if (servicio.estado !== 'Pagado') return false
+  if (!servicio.fecha || !servicio.hora) {
+    return false
+  }
 
+  // Solo se bloquea cuando el pago está completamente realizado.
+  if (servicio.estado !== 'Pagado') {
+    return false
+  }
+
+  // Debe tener calificación registrada.
+  // Las observaciones son opcionales: no influyen en el bloqueo.
   const tieneCalificacion = Number(servicio.calificacion || 0) > 0
-  const tieneObservaciones = typeof servicio.observaciones === 'string' && servicio.observaciones.trim().length > 0
-  if (!tieneCalificacion || !tieneObservaciones) return false
 
-  const fechaActual = obtenerFechaHoyLocal()
-  const horaActual = obtenerHoraActualLocal()
-  if (servicio.fecha < fechaActual) return true
-  if (servicio.fecha === fechaActual && servicio.hora < horaActual) return true
-  return false
+  if (!tieneCalificacion) {
+    return false
+  }
+
+  // Convertir la fecha y hora del servicio en un momento exacto.
+  const partesFecha = String(servicio.fecha).split('-')
+  const partesHora = String(servicio.hora).split(':')
+
+  if (partesFecha.length !== 3 || partesHora.length < 2) {
+    return false
+  }
+
+  const anio = Number(partesFecha[0])
+  const mes = Number(partesFecha[1]) - 1
+  const dia = Number(partesFecha[2])
+  const horas = Number(partesHora[0])
+  const minutos = Number(partesHora[1])
+
+  const fechaHoraServicio = new Date(
+    anio,
+    mes,
+    dia,
+    horas,
+    minutos,
+    0,
+    0
+  ).getTime()
+
+  // El reloj se actualiza cada segundo.
+  return relojActual.value >= fechaHoraServicio
 }
 
 function confirmarEliminacion(id) {
