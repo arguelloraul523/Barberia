@@ -270,8 +270,25 @@
           </div>
 
           <div class="card-actions">
-            <button @click="editarServicio(servicio)" class="btn-action-edit">✏️ Editar</button>
-            <button @click="confirmarEliminacion(servicio.id)" class="btn-action-delete">🗑️ Eliminar</button>
+            <span v-if="servicioYaFinalizo(servicio)" class="servicio-finalizado">
+              🔒 Servicio finalizado
+            </span>
+
+            <button
+              @click="editarServicio(servicio)"
+              :disabled="servicioYaFinalizo(servicio)"
+              :class="['btn-action-edit', { 'btn-bloqueado': servicioYaFinalizo(servicio) }]"
+            >
+              ✏️ Editar
+            </button>
+
+            <button
+              @click="confirmarEliminacion(servicio.id)"
+              :disabled="servicioYaFinalizo(servicio)"
+              :class="['btn-action-delete', { 'btn-bloqueado': servicioYaFinalizo(servicio) }]"
+            >
+              🗑️ Eliminar
+            </button>
           </div>
         </div>
       </div>
@@ -337,6 +354,7 @@
                       type="checkbox"
                       v-model="form.serviciosSeleccionados"
                       :value="item.nombre"
+                      :disabled="!puedeSeleccionarServicio(item.nombre)"
                     />
                     <span class="service-option-text">
                       <strong>{{ item.nombre }}</strong>
@@ -351,6 +369,10 @@
                   </label>
                 </div>
               </div>
+
+              <span class="form-help servicios-ayuda">
+                Seleccione un solo corte. Puede agregar servicios complementarios como cejas o diseño de línea.
+              </span>
 
               <span v-if="errores.servicios" class="error-msg">{{ errores.servicios }}</span>
 
@@ -393,6 +415,7 @@
               <span v-if="errores.hora" class="error-msg">{{ errores.hora }}</span>
             </div>
 
+            <!-- PROPINA -->
             <div class="form-group">
               <label>Propina ($ opcional):</label>
               <input
@@ -404,6 +427,8 @@
               />
               <span v-if="errores.propina" class="error-msg">{{ errores.propina }}</span>
             </div>
+
+            <!-- MÉTODO DE PAGO -->
             <div class="form-group">
               <label>Seleccione el método de pago:</label>
               <select v-model="form.metodoPago" :class="{ 'input-error': errores.metodoPago }">
@@ -415,6 +440,7 @@
               <span v-if="errores.metodoPago" class="error-msg">{{ errores.metodoPago }}</span>
             </div>
 
+            <!-- ESTADO DEL PAGO -->
             <div class="form-group">
               <label>Seleccione el estado del pago:</label>
               <select v-model="form.estado" :class="{ 'input-error': errores.estado }">
@@ -425,6 +451,7 @@
               <span v-if="errores.estado" class="error-msg">{{ errores.estado }}</span>
             </div>
 
+            <!-- ABONO -->
             <div v-if="form.estado === 'Abonado'" class="form-group full-width abono-form-box">
               <label>¿Cuánto abonó el cliente?</label>
               <input
@@ -453,6 +480,7 @@
               <span v-if="errores.abono" class="error-msg">{{ errores.abono }}</span>
             </div>
 
+            <!-- TOTAL -->
             <div class="form-group full-width">
               <div class="grand-total-box">
                 <span>Total a pagar:</span>
@@ -477,6 +505,7 @@
       </div>
     </div>
 
+    <!-- MODAL ELIMINAR -->
     <div v-show="mostrarModalEliminar" class="modal-backdrop">
       <div class="modal-box modal-small text-center">
         <div class="warning-icon">⚠️</div>
@@ -490,6 +519,7 @@
       </div>
     </div>
 
+    <!-- MODAL DE CALIFICACIÓN SEPARADO -->
     <div v-show="mostrarModalCalificar" class="modal-backdrop">
       <div class="modal-box modal-small">
         <div class="modal-header">
@@ -538,7 +568,10 @@
 import { ref } from 'vue'
 import { useLocalStorage } from '@vueuse/core'
 
+// Persistencia únicamente con useLocalStorage
 const servicios = useLocalStorage('don_ramiro_barberia_db', [])
+
+// Estados de interfaz
 const mostrarModal = ref(false)
 const editandoId = ref(null)
 const mostrarModalEliminar = ref(false)
@@ -548,13 +581,16 @@ const calificandoId = ref(null)
 const registrandoCliente = ref(false)
 const mostrarSelectorServicios = ref(false)
 
+// Búsqueda y orden
 const busquedaCliente = ref('')
 const criterioOrden = ref('fecha-desc')
 const alertaFrecuenteVisible = ref(false)
 const conteoClienteActual = ref(0)
 
+// Datos del negocio
 const listaBarberos = ['Don Ramiro', 'Empleado 1', 'Empleado 2']
 
+// Servicios reales de barbería con precios de ejemplo
 const catalogoServicios = [
   { nombre: 'Corte clásico con tijera', precio: 18000 },
   { nombre: 'Low Fade', precio: 25000 },
@@ -568,6 +604,7 @@ const catalogoServicios = [
   { nombre: 'Diseño de línea', precio: 5000 }
 ]
 
+// Formulario principal
 const form = ref({
   cliente: '',
   serviciosSeleccionados: [],
@@ -580,12 +617,16 @@ const form = ref({
   abono: ''
 })
 
+// Formulario de calificación separado del registro
 const formCalificacion = ref({
   calificacion: 5,
   observaciones: ''
 })
 
+// Errores manejados por JavaScript, sin validaciones HTML
 const errores = ref({})
+
+// -------------------- FECHA Y HORA --------------------
 
 function obtenerFechaHoyLocal() {
   const hoy = new Date()
@@ -611,6 +652,25 @@ function obtenerHoraInicial() {
 
 function fechaEsAnteriorAHoy(fecha) {
   return fecha < obtenerFechaHoyLocal()
+}
+
+function servicioYaFinalizo(servicio) {
+  if (!servicio.fecha || !servicio.hora) {
+    return false
+  }
+
+  const fechaActual = obtenerFechaHoyLocal()
+  const horaActual = obtenerHoraActualLocal()
+
+  if (servicio.fecha < fechaActual) {
+    return true
+  }
+
+  if (servicio.fecha === fechaActual && servicio.hora < horaActual) {
+    return true
+  }
+
+  return false
 }
 
 function validarFechaYHora(err) {
@@ -640,6 +700,61 @@ function validarFechaYHora(err) {
   if (fecha === obtenerFechaHoyLocal() && hora < obtenerHoraActualLocal()) {
     err.hora = 'Para hoy no se puede registrar una hora que ya pasó.'
     return false
+  }
+
+  return true
+}
+
+// -------------------- SERVICIOS Y PAGOS --------------------
+
+function esCorte(nombreServicio) {
+  return [
+    'Corte clásico con tijera',
+    'Low Fade',
+    'Mid Fade',
+    'High Fade',
+    'Taper Fade',
+    'Corte Buzz Cut',
+    'Corte + Barba'
+  ].includes(nombreServicio)
+}
+
+function esServicioConBarba(nombreServicio) {
+  return nombreServicio === 'Corte + Barba'
+}
+
+function esArregloBarba(nombreServicio) {
+  return nombreServicio === 'Arreglo y perfilado de barba'
+}
+
+function puedeSeleccionarServicio(nombreServicio) {
+  const seleccionados = form.value.serviciosSeleccionados
+
+  // Si el servicio ya está seleccionado, siempre se debe poder desmarcar.
+  if (seleccionados.includes(nombreServicio)) {
+    return true
+  }
+
+  // No permite seleccionar un segundo corte.
+  if (esCorte(nombreServicio)) {
+    for (let i = 0; i < seleccionados.length; i++) {
+      if (esCorte(seleccionados[i])) {
+        return false
+      }
+    }
+  }
+
+  // Corte + Barba y Arreglo de barba son incompatibles.
+  if (esServicioConBarba(nombreServicio)) {
+    if (seleccionados.includes('Arreglo y perfilado de barba')) {
+      return false
+    }
+  }
+
+  if (esArregloBarba(nombreServicio)) {
+    if (seleccionados.includes('Corte + Barba')) {
+      return false
+    }
   }
 
   return true
@@ -696,9 +811,12 @@ function obtenerServiciosDelRegistro(servicio) {
 }
 
 function seleccionarPrecioSugerido() {
-
+  // Se conserva como función normal para cumplir la estructura vista en clase.
+  // El total se calcula directamente a partir de los servicios seleccionados.
   return calcularTotalFormulario()
 }
+
+// -------------------- ESTADÍSTICAS --------------------
 
 function calcularIngresosTotales() {
   let total = 0
@@ -889,6 +1007,8 @@ function obtenerClaseTurno(horaStr) {
   return 'shift-night'
 }
 
+// -------------------- FORMULARIO --------------------
+
 function obtenerFormVacio() {
   return {
     cliente: '',
@@ -928,6 +1048,10 @@ function abrirNuevoModal() {
 }
 
 function editarServicio(servicio) {
+  if (servicioYaFinalizo(servicio)) {
+    return
+  }
+
   registrandoCliente.value = false
   form.value = {
     cliente: servicio.cliente,
@@ -1036,6 +1160,7 @@ function guardarServicio() {
     abono: abono
   }
 
+  // Spinner de registro durante 1.5 segundos
   setTimeout(() => {
     if (editandoId.value) {
       const idx = servicios.value.findIndex(s => s.id === editandoId.value)
@@ -1061,6 +1186,12 @@ function guardarServicio() {
 }
 
 function confirmarEliminacion(id) {
+  const servicio = servicios.value.find(s => s.id === id)
+
+  if (!servicio || servicioYaFinalizo(servicio)) {
+    return
+  }
+
   idAEliminar.value = id
   mostrarModalEliminar.value = true
 }
@@ -1070,6 +1201,8 @@ function ejecutarEliminacion() {
   mostrarModalEliminar.value = false
   idAEliminar.value = null
 }
+
+// -------------------- CALIFICACIÓN SEPARADA --------------------
 
 function abrirModalCalificar(servicio) {
   calificandoId.value = servicio.id
@@ -1100,6 +1233,7 @@ function guardarCalificacion() {
 </script>
 <style>
 
+/* Reset y variables de diseño Full Screen */
 :root {
   --bg-dark: #0f172a;
   --bg-card: #1e293b;
@@ -1139,6 +1273,7 @@ body {
   gap: 22px;
 }
 
+/* Header */
 .barber-header {
   display: flex;
   justify-content: space-between;
@@ -1193,6 +1328,7 @@ body {
   box-shadow: 0 6px 20px rgba(245, 158, 11, 0.45);
 }
 
+/* Dashboard de Estadísticas */
 .stats-dashboard {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
@@ -1287,6 +1423,7 @@ body {
   font-size: 0.75rem;
 }
 
+/* Barra de Controles y Búsqueda */
 .controls-bar {
   display: flex;
   flex-wrap: wrap;
@@ -1375,6 +1512,7 @@ body {
   border-color: var(--accent-gold);
 }
 
+/* Rejilla de Tarjetas */
 .services-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -1586,6 +1724,7 @@ body {
 
 .btn-action-edit:hover, .btn-action-delete:hover { opacity: 0.85; }
 
+/* Modales */
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1753,6 +1892,7 @@ body {
 
 .empty-icon { font-size: 3rem; margin-bottom: 10px; }
 
+/* Calificación por Estrellas */
 .star-buttons {
   display: flex;
   gap: 8px;
@@ -1796,6 +1936,61 @@ body {
   .form-grid { grid-template-columns: 1fr; }
   .controls-bar { flex-direction: column; align-items: stretch; }
   .sort-buttons { flex-wrap: wrap; justify-content: center; }
+}
+
+/* -------------------- AJUSTES SOLICITADOS -------------------- */
+
+
+/* Controles de fecha y hora visibles */
+.form-group input[type="date"],
+.form-group input[type="time"] {
+  background: #f8fafc;
+  color: #0f172a;
+  color-scheme: light;
+  border: 2px solid #64748b;
+  font-weight: 700;
+  min-height: 44px;
+}
+
+.form-group input[type="date"]:focus,
+.form-group input[type="time"]:focus {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: var(--accent-gold);
+}
+
+.form-group input[type="date"]::-webkit-calendar-picker-indicator,
+.form-group input[type="time"]::-webkit-calendar-picker-indicator {
+  opacity: 1;
+  cursor: pointer;
+  width: 20px;
+  height: 20px;
+}
+
+.servicios-ayuda {
+  display: block;
+  margin-top: 2px;
+  color: #cbd5e1;
+}
+
+.servicio-finalizado {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.btn-bloqueado {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+  pointer-events: none;
 }
 
 .main-content {
@@ -1992,6 +2187,16 @@ body {
   background: rgba(245, 158, 11, 0.1);
 }
 
+.service-option:has(input:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.service-option:has(input:disabled):hover {
+  border-color: var(--border-color);
+  background: #1e293b;
+}
+
 .service-option input {
   width: 17px;
   height: 17px;
@@ -2099,6 +2304,10 @@ body {
 }
 
 @media (max-width: 600px) {
+  .servicio-finalizado {
+    grid-column: 1 / -1;
+  }
+
   .services-dropdown-menu {
     grid-template-columns: 1fr;
   }
