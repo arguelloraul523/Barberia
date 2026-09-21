@@ -170,6 +170,35 @@
           ⭐ Mejor Calificados
         </button>
       </div>
+
+      <!-- FILTRO POR TURNO -->
+      <div class="sort-buttons shift-filter">
+        <span class="sort-label">Turno:</span>
+        <button
+          @click="filtroTurno = 'Todos'"
+          :class="['btn-sort', { active: filtroTurno === 'Todos' }]"
+        >
+          📋 Todos ({{ contarServiciosPorTurno('Todos') }})
+        </button>
+        <button
+          @click="filtroTurno = 'Mañana'"
+          :class="['btn-sort', { active: filtroTurno === 'Mañana' }]"
+        >
+          🌅 Mañana ({{ contarServiciosPorTurno('Mañana') }})
+        </button>
+        <button
+          @click="filtroTurno = 'Tarde'"
+          :class="['btn-sort', { active: filtroTurno === 'Tarde' }]"
+        >
+          ☀️ Tarde ({{ contarServiciosPorTurno('Tarde') }})
+        </button>
+        <button
+          @click="filtroTurno = 'Noche'"
+          :class="['btn-sort', { active: filtroTurno === 'Noche' }]"
+        >
+          🌙 Noche ({{ contarServiciosPorTurno('Noche') }})
+        </button>
+      </div>
     </section>
 
     <!-- SERVICIOS REGISTRADOS -->
@@ -177,7 +206,11 @@
       <div v-if="obtenerServiciosFiltrados().length === 0" class="empty-state">
         <div class="empty-icon">✂️</div>
         <h3>No se encontraron registros de servicios</h3>
-        <p v-if="busquedaCliente">No hay resultados para "{{ busquedaCliente }}".</p>
+        <p v-if="busquedaCliente && filtroTurno !== 'Todos'">
+          No hay resultados para "{{ busquedaCliente }}" en el turno de la {{ filtroTurno.toLowerCase() }}.
+        </p>
+        <p v-else-if="busquedaCliente">No hay resultados para "{{ busquedaCliente }}".</p>
+        <p v-else-if="filtroTurno !== 'Todos'">No hay servicios registrados en el turno de la {{ filtroTurno.toLowerCase() }}.</p>
         <p v-else>Comienza registrando la primera atención del día con el botón de arriba.</p>
       </div>
 
@@ -754,6 +787,7 @@ const servicioCatalogoEditando = ref('')
 // Búsqueda y orden
 const busquedaCliente = ref('')
 const criterioOrden = ref('fecha-desc')
+const filtroTurno = ref('Todos') // Todos | Mañana | Tarde | Noche
 const alertaFrecuenteVisible = ref(false)
 const conteoClienteActual = ref(0)
 const descuentoFidelidadActivo = ref(false)
@@ -912,6 +946,10 @@ function obtenerServiciosFiltrados() {
     lista = lista.filter(s => String(s.cliente || '').toLowerCase().includes(busqueda))
   }
 
+  if (filtroTurno.value !== 'Todos') {
+    lista = lista.filter(s => obtenerNombreTurno(s.hora) === filtroTurno.value)
+  }
+
   if (criterioOrden.value === 'precio-desc') {
     lista.sort((a, b) => Number(b.totalConPropina ?? b.precio ?? 0) - Number(a.totalConPropina ?? a.precio ?? 0))
   } else if (criterioOrden.value === 'calificacion-desc') {
@@ -921,6 +959,19 @@ function obtenerServiciosFiltrados() {
   }
 
   return lista
+}
+
+// Cantidad de servicios por turno (respeta el texto de búsqueda del cliente)
+function contarServiciosPorTurno(turno) {
+  let lista = servicios.value.filter(s => !s.archivado)
+
+  if (busquedaCliente.value.trim()) {
+    const busqueda = busquedaCliente.value.trim().toLowerCase()
+    lista = lista.filter(s => String(s.cliente || '').toLowerCase().includes(busqueda))
+  }
+
+  if (turno === 'Todos') return lista.length
+  return lista.filter(s => obtenerNombreTurno(s.hora) === turno).length
 }
 
 function calcularIngresosTotales() {
@@ -1719,6 +1770,13 @@ body {
   color: #0f172a;
   font-weight: bold;
   border-color: var(--accent-gold);
+}
+
+.shift-filter {
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
 }
 
 /* Rejilla de Tarjetas */
